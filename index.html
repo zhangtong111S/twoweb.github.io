@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学生期末评语生成器 </title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.37.11/build/docxtemplater.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.4/dist/pizzip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pizzip@3.1.4/dist/pizzip-utils.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei", sans-serif; }
+        body { background: #f0f2f5; padding: 20px; line-height: 1.6; }
+        .container { max-width: 900px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); overflow: hidden; }
+        .tabs { display: flex; border-bottom: 1px solid #eee; }
+        .tab { flex: 1; text-align: center; padding: 16px; font-size: 18px; font-weight: 600; color: #666; background: #f8f9fa; cursor: pointer; transition: all 0.3s; }
+        .tab.active { color: #2d7dd2; background: white; border-bottom: 3px solid #2d7dd2; }
+        .tab-content { padding: 30px; display: none; }
+        .tab-content.active { display: block; }
+        h2 { color: #333; margin-bottom: 24px; font-size: 22px; }
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; color: #444; font-weight: 500; font-size: 16px; }
+        input, textarea, select { width: 100%; padding: 12px 15px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; resize: none; }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: #2d7dd2; box-shadow: 0 0 0 4px rgba(45,125,210,0.1); }
+        .btn { display: block; width: 100%; padding: 15px; margin: 10px 0; background: #2d7dd2; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: 600; cursor: pointer; transition: all 0.3s; }
+        .btn:hover { background: #236ab9; }
+        .btn-secondary { background: #6c757d; }
+        .btn-secondary:hover { background: #5a6268; }
+        .result { margin-top: 30px; padding: 24px; background: #f8f9fa; border-radius: 8px; border-left: 5px solid #2d7dd2; display: none; }
+        .result h3 { color: #333; margin-bottom: 16px; font-size: 20px; }
+        .comment-text { font-size: 18px; color: #333; line-height: 1.8; white-space: pre-wrap; }
+        .batch-tips { background: #e8f4fd; padding: 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; color: #666; }
+        .batch-tips strong { color: #2d7dd2; }
+        #batchResult { margin-top: 20px; padding: 20px; background: #f8f9fa; border-radius: 8px; display: none; }
+        .student-item { padding: 12px 0; border-bottom: 1px dashed #eee; }
+        .student-item:last-child { border-bottom: none; }
+        .student-name { font-weight: 600; color: #2d7dd2; font-size: 16px; margin-bottom: 8px; }
+        .student-comment { color: #444; font-size: 15px; line-height: 1.7; }
+        .export-btns { display: flex; gap: 10px; margin-top: 20px; }
+        .export-btns .btn { flex: 1; margin: 0; padding: 12px; font-size: 16px; }
+        .tip { text-align: center; margin-top: 12px; color: #999; font-size: 14px; }
+        @media (max-width: 600px) {
+            .container { margin: 0 auto; padding: 0; }
+            .tab { font-size: 16px; padding: 12px; }
+            .tab-content { padding: 20px 15px; }
+            h2 { font-size: 20px; }
+            .btn { font-size: 16px; padding: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('single')">单条生成</div>
+            <div class="tab" onclick="switchTab('batch')">批量生成</div>
+        </div>
+
+        <div class="tab-content active" id="singleContent">
+            <h2>✨ 单条评语生成</h2>
+            <div class="input-group">
+                <label for="name">学生姓名 *</label>
+                <input type="text" id="name" placeholder="例如：小明、小红">
+            </div>
+            <div class="input-group">
+                <label for="strengths">核心优点 *</label>
+                <input type="text" id="strengths" placeholder="例如：勤奋认真、活泼开朗、乐于助人">
+            </div>
+            <div class="input-group">
+                <label for="progress">本学期进步点 *</label>
+                <input type="text" id="progress" placeholder="例如：期末成绩进步了好几名、主动整理文具">
+            </div>
+            <div class="input-group">
+                <label for="improvement">可改进的小建议（可选）</label>
+                <textarea id="improvement" rows="2" placeholder="例如：写字更工整、课堂发言更大声（无则留空）"></textarea>
+            </div>
+            <button class="btn" onclick="generateSingleComment()">生成专属评语</button>
+            <div class="result" id="singleResult">
+                <h3>✅ 生成结果</h3>
+                <div class="comment-text" id="singleCommentText"></div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="batchContent">
+            <h2>📚 全班批量生成</h2>
+            <div class="batch-tips">
+                <strong>📋 表格格式要求（必看）：</strong><br>
+                1. 支持文件：Excel(.xlsx) 或 CSV(.csv)<br>
+                2. 表格必须包含<b>4列</b>，<b>表头必须严格一致</b>：姓名、优点、进步点、小建议<br>
+                3. 无改进建议的学生，对应单元格留空即可<br>
+                4. 示例：<br>
+                姓名 | 优点 | 进步点 | 小建议<br>
+                小明 | 勤奋认真 | 期末成绩进步了好几名 | 写字更工整<br>
+                小红 | 活泼开朗 | 主动帮助同学 |
+            </div>
+            <div class="input-group">
+                <label for="fileUpload">选择学生信息表 *</label>
+                <input type="file" id="fileUpload" accept=".xlsx,.csv" onchange="handleFileUpload(event)">
+            </div>
+            <div id="fileInfo" style="margin:15px 0; color:#666; font-size:14px;"></div>
+            <button class="btn" onclick="generateBatchComments()" disabled id="batchGenerateBtn">📌 开始批量生成</button>
+            <button class="btn btn-secondary" onclick="clearBatchData()" style="display:none;" id="clearBatchBtn">🔄 清空重新上传</button>
+            
+            <div id="batchResult">
+                <h3>✅ 全班评语生成完成（共<span id="studentCount">0</span>人）</h3>
+                <div class="export-btns">
+                    <button class="btn" onclick="exportToExcel()">导出为 Excel</button>
+                    <button class="btn" onclick="exportToWord()">导出为 Word</button>
+                </div>
+                <div id="commentList" style="max-height: 400px; overflow-y: auto; margin-top: 20px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ---------------------- 核心评语模板库（零病句设计） ----------------------
+        const startTemplates = [
+            "{name}同学，这学期的你给老师留下了深刻的印象！",
+            "一转眼又到学期末啦，{name}的成长老师都看在眼里～",
+            "回顾这一学期，{name}的表现值得大大的肯定！",
+            "{name}是个特别棒的孩子，这学期的进步让人惊喜！",
+            "老师想对你说，{name}这学期真的超用心！",
+            "{name}这学期的每一点进步，老师都记在心里～",
+            "时间过得真快，{name}在这学期又解锁了好多新技能！",
+            "在老师眼里，{name}一直是个闪闪发光的小宝贝～",
+            "{name}的每一次努力，都让自己变得更优秀啦！",
+            "这学期，{name}用行动证明了自己的成长～",
+            "从开学到现在，{name}的变化真的太大了！",
+            "{name}同学，你这学期的表现，老师必须给你点个赞！",
+            "看着{name}一点点进步，老师真的特别开心～",
+            "课堂上、课间里，{name}的闪光点总能被老师发现！",
+            "{name}用自己的坚持，交出了超棒的学期答卷～",
+            "这学期的{name}，比上学期更勇敢、更优秀啦！",
+            "老师想夸夸{name}：这学期的你，真的超棒！",
+            "{name}的成长，藏在每一次认真的作业和发言里～"
+        ];
+
+        const strengthTemplates = [
+            "你身上{strengths}的特质，总能感染身边的同学和老师。",
+            "{strengths}是你最亮眼的优点，也让你在学习和相处中都特别受欢迎。",
+            "不管是学习还是和同学相处，你都能展现出{strengths}的好品质。",
+            "能一直保持{strengths}的状态，是你这学期最大的收获之一。",
+            "这份{strengths}的坚持，让你在很多事情上都做得特别好。",
+            "正是因为{strengths}，你才能把每一件小事都做好。",
+            "{strengths}的你，总能给班级带来温暖和正能量～",
+            "老师最喜欢你{strengths}的样子，认真又可爱！",
+            "拥有{strengths}这个好品质，会让你越来越优秀。",
+            "哪怕遇到小困难，你也能凭着{strengths}坚持下去。",
+            "{strengths}让你在学习中少走弯路，多了很多收获。",
+            "和同学相处时，{strengths}的你总能赢得大家的喜欢。",
+            "这份{strengths}的美好，是你最珍贵的小宝藏～",
+            "课堂上的你，因为{strengths}总能跟上老师的节奏。",
+            "做作业时的{strengths}，让你的正确率越来越高。",
+            "{strengths}不仅让你自己进步，还能带动身边的同学。",
+            "老师能感受到，你一直在用{strengths}面对学习。",
+            "小小的你，却有着{strengths}这样大大的优点！"
+        ];
+
+        const transition1Templates = [
+            "而最让老师惊喜的是，",
+            "除此之外，你在成长路上的小突破也超亮眼——",
+            "在保持这份优点的同时，你还收获了一个超棒的进步——",
+            "不仅如此，你这学期还有一个特别大的收获：",
+            "更难得的是，",
+            "同时，你还有一个让老师刮目相看的进步：",
+            "在这份优点的加持下，你还做到了——",
+            "并且，你这学期还实现了一个超棒的突破：",
+            "除了这份闪光点，你还有一个值得表扬的地方：",
+            "带着这份好品质，你还收获了满满的进步——"
+        ];
+
+        // --------------- 核心优化1：进步点模板 → 完全通用，无固定动词 ---------------
+        const progressTemplates = [
+            "{progress}，这真的是超棒的进步！",
+            "{progress}，老师为你感到骄傲！",
+            "{progress}，能看出你背后付出的努力～",
+            "{progress}，这份收获太让人惊喜啦！",
+            "{progress}，这就是你努力的最好证明！",
+            "{progress}，你真的越来越优秀了！",
+            "{progress}，这个突破值得全班同学学习！",
+            "{progress}，老师真的为你高兴！",
+            "{progress}，这就是成长最棒的样子！",
+            "{progress}，继续保持这份势头哦！"
+        ];
+
+        const transition2Templates = [
+            "当然啦，成长路上总有可以变得更好的小细节，",
+            "不过想要更上一层楼，我们还可以再努努力：",
+            "如果想让自己的表现更完美，还有一个小方向可以加油：",
+            "接下来的日子里，我们可以多关注一个小细节：",
+            "不过没关系，成长就是不断打磨自己的过程，",
+            "当然，保持这份进步的同时，我们还能变得更棒："
+        ];
+
+        // --------------- 核心优化2：小建议模板 → 适配不同输入，避免生硬拼接 ---------------
+        const improveTemplates = [
+            "试着多注意{improvement}，相信你会更出色！",
+            "如果能在{improvement}上多下点功夫，你会更耀眼！",
+            "下次可以试试{improvement}，你一定能做到的！",
+            "多花点时间在{improvement}上，会给大家带来更多惊喜哦！",
+            "把{improvement}当成小目标，你会越来越棒的！"
+        ];
+
+        const improveNoTemplates = [
+            "你只需要继续保持这份热情和努力就够啦～",
+            "不用着急，一步一个脚印，你会越来越优秀的！",
+            "暂时没有需要特别改进的地方，继续做独一无二的自己吧！",
+            "保持现在的状态，下学期的你一定会更出彩！",
+            "就这样一直勇敢往前走，老师永远为你加油！",
+            "你的表现已经超棒了，继续做快乐的小少年就好～",
+            "不用给自己太大压力，享受成长的过程最重要！",
+            "你已经把自己的优点发挥得淋漓尽致，继续保持哦！",
+            "这学期的你已经足够优秀，下学期继续闪闪发光吧！",
+            "没有需要调整的地方，你的每一面都值得被肯定～",
+            "就这样稳稳地成长，老师相信你会越来越好！",
+            "保持这份初心，你会成为更棒的自己！"
+        ];
+
+        const endTemplates = [
+            "老师永远相信你，继续加油哦，小宝贝！",
+            "新学期，老师期待看到更棒、更自信的你～",
+            "继续努力吧，你的未来一定会闪闪发光！",
+            "带着这学期的收获，勇敢迎接新的挑战吧！",
+            "愿你一直保持热爱，慢慢长大，慢慢优秀～",
+            "做勇敢的小勇士，朝着自己的小目标大步前进！",
+            "这学期的你超棒，下学期继续刷新自己的成绩吧！",
+            "老师会一直陪着你，见证你的每一次成长～",
+            "小小的你有大大的能量，继续发光发热吧！",
+            "把这份进步变成习惯，你会越来越优秀的！",
+            "成长路上没有捷径，但你的努力从不会白费～",
+            "愿你永远保持好奇心，在学习的世界里探索更多美好！",
+            "下学期，让我们一起把小目标变成大收获～",
+            "你值得所有的表扬，继续做最棒的自己就好！",
+            "一步一个脚印，你会走到自己想去的地方～",
+            "带着这份成就感，开启新的学习旅程吧！",
+            "老师为你骄傲，也相信你会越来越棒！",
+            "保持这份认真和热情，未来的你一定会感谢现在的自己～"
+        ];
+
+        // 随机选择函数
+        function randomChoice(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        // 生成评语核心函数（零病句逻辑）
+        function generateCommentCore(name, strengths, progress, improvement) {
+            const start = randomChoice(startTemplates).replace("{name}", name);
+            const strength = randomChoice(strengthTemplates).replace("{strengths}", strengths);
+            const transition1 = randomChoice(transition1Templates);
+            // 进步点直接套用通用模板，无额外动词
+            const progressText = randomChoice(progressTemplates).replace("{progress}", progress);
+            const transition2 = randomChoice(transition2Templates);
+            
+            let improvePart = "";
+            if (!improvement || improvement.trim() === "") {
+                improvePart = randomChoice(improveNoTemplates);
+            } else {
+                // 小建议也用通用模板，避免生硬
+                improvePart = randomChoice(improveTemplates).replace("{improvement}", improvement.trim());
+            }
+            
+            const end = randomChoice(endTemplates);
+            return start + strength + transition1 + progressText + transition2 + improvePart + end;
+        }
+
+        // ---------------------- 单条生成功能 ----------------------
+        function generateSingleComment() {
+            const name = document.getElementById("name").value.trim();
+            const strengths = document.getElementById("strengths").value.trim();
+            const progress = document.getElementById("progress").value.trim();
+            const improvement = document.getElementById("improvement").value.trim();
+
+            if (!name || !strengths || !progress) {
+                alert("请至少填写【姓名】、【核心优点】、【进步点】这三个必填项哦！");
+                return;
+            }
+
+            const comment = generateCommentCore(name, strengths, progress, improvement);
+            document.getElementById("singleCommentText").innerText = comment;
+            document.getElementById("singleResult").style.display = "block";
+            document.getElementById("singleResult").scrollIntoView({ behavior: "smooth" });
+        }
+
+        // ---------------------- 标签页切换 ----------------------
+        function switchTab(tabName) {
+            document.querySelectorAll(".tab").forEach(tab => tab.classList.remove("active"));
+            document.querySelector(`.tab[onclick="switchTab('${tabName}')"]`).classList.add("active");
+            
+            document.querySelectorAll(".tab-content").forEach(content => content.classList.remove("active"));
+            document.getElementById(`${tabName}Content`).classList.add("active");
+        }
+
+        // ---------------------- 批量生成功能 ----------------------
+        let studentData = [];
+        let batchComments = [];
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const fileInfo = document.getElementById("fileInfo");
+            fileInfo.innerText = `✅ 已选择文件：${file.name}（大小：${(file.size / 1024 / 1024).toFixed(2)}MB）`;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: "array" });
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                    const requiredKeys = ["姓名", "优点", "进步点", "小建议"];
+                    const firstRowKeys = Object.keys(jsonData[0] || {});
+                    const isValid = requiredKeys.every(key => firstRowKeys.includes(key));
+
+                    if (!isValid) {
+                        alert("❌ 表格格式错误！请检查：\n1. 表头必须包含：姓名、优点、进步点、小建议\n2. 表头名称必须完全一致（不能有空格）");
+                        studentData = [];
+                        document.getElementById("batchGenerateBtn").disabled = true;
+                        return;
+                    }
+
+                    studentData = jsonData.filter(item => item.姓名 && item.姓名.trim() !== "");
+                    if (studentData.length === 0) {
+                        alert("❌ 表格中没有有效学生数据！");
+                        document.getElementById("batchGenerateBtn").disabled = true;
+                        return;
+                    }
+
+                    document.getElementById("batchGenerateBtn").disabled = false;
+                    document.getElementById("clearBatchBtn").style.display = "block";
+                    fileInfo.innerText += `\n✅ 解析成功！共找到 ${studentData.length} 名学生的信息`;
+                } catch (error) {
+                    alert(`❌ 文件解析失败：${error.message}\n请确保文件是标准的.xlsx或.csv格式！`);
+                    studentData = [];
+                    document.getElementById("batchGenerateBtn").disabled = true;
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function generateBatchComments() {
+            if (studentData.length === 0) {
+                alert("❌ 请先上传并解析学生信息表！");
+                return;
+            }
+
+            batchComments = studentData.map(student => {
+                const comment = generateCommentCore(
+                    student.姓名.trim(),
+                    student.优点.trim(),
+                    student.进步点.trim(),
+                    student.小建议 ? student.小建议.trim() : ""
+                );
+                return {
+                    姓名: student.姓名.trim(),
+                    优点: student.优点.trim(),
+                    进步点: student.进步点.trim(),
+                    小建议: student.小建议 ? student.小建议.trim() : "无",
+                    期末评语: comment
+                };
+            });
+
+            const batchResult = document.getElementById("batchResult");
+            const commentList = document.getElementById("commentList");
+            const studentCount = document.getElementById("studentCount");
+
+            studentCount.innerText = batchComments.length;
+            commentList.innerHTML = batchComments.map((item, index) => `
+                <div class="student-item">
+                    <div class="student-name">${index + 1}. ${item.姓名}</div>
+                    <div class="student-comment">${item.期末评语}</div>
+                </div>
+            `).join("");
+
+            batchResult.style.display = "block";
+            batchResult.scrollIntoView({ behavior: "smooth" });
+        }
+
+        function clearBatchData() {
+            studentData = [];
+            batchComments = [];
+            document.getElementById("fileUpload").value = "";
+            document.getElementById("fileInfo").innerText = "";
+            document.getElementById("batchGenerateBtn").disabled = true;
+            document.getElementById("clearBatchBtn").style.display = "none";
+            document.getElementById("batchResult").style.display = "none";
+        }
+
+        // ---------------------- 导出功能 ----------------------
+        function exportToExcel() {
+            if (batchComments.length === 0) {
+                alert("❌ 请先批量生成评语！");
+                return;
+            }
+
+            const worksheet = XLSX.utils.json_to_sheet(batchComments);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "学生期末评语");
+            XLSX.writeFile(workbook, `全班学生期末评语_${new Date().toLocaleDateString().replace(/\//g, "-")}.xlsx`);
+        }
+
+        function exportToWord() {
+            if (batchComments.length === 0) {
+                alert("❌ 请先批量生成评语！");
+                return;
+            }
+
+            let wordContent = batchComments.map((item, index) => `
+                <p style="margin: 10px 0; font-size: 16px; line-height: 1.8;">
+                    <strong>${index + 1}. ${item.姓名}：</strong>${item.期末评语}
+                </p>
+                <hr style="border: none; border-top: 1px dashed #ccc; margin: 15px 0;">
+            `).join("");
+
+            const templateContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>全班学生期末评语</title>
+                    <style>
+                        body { font-family: "Microsoft YaHei", sans-serif; padding: 20px; }
+                        h1 { text-align: center; color: #333; margin-bottom: 30px; }
+                    </style>
+                </head>
+                <body>
+                    <h1>全班学生期末评语（${new Date().toLocaleDateString()}）</h1>
+                    ${wordContent}
+                </body>
+                </html>
+            `;
+
+            const zip = new PizZip();
+            zip.file("word/document.xml", templateContent);
+            const out = zip.generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+            saveAs(out, `全班学生期末评语_${new Date().toLocaleDateString().replace(/\//g, "-")}.docx`);
+        }
+
+        function saveAs(blob, fileName) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 0);
+        }
+    </script>
+</body>
+</html>
